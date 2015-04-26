@@ -49,8 +49,8 @@ function dymy_badges_info()
 		"author"				=> "Dylan Myers",
 		"authorsite"			=> "mailto:dylanspcs@gmail.com",
 		"version"				=> "0.1.6",
-		"guid"					=> "b5dc51f3cba352f4bcb56523d483a7fc",
-		"compatibility" 		=> "16*",
+		'codename'				=> 'ougc_dymy_badges',
+		"compatibility" 		=> "18*",
 	);
 }
 
@@ -70,20 +70,17 @@ function dymy_badges_install()
 function dymy_badges_is_installed()
 {
 	global $db;
-	
-	if($db->table_exists("dymy_badges"))
-	{
-		return true;
-	}
-	
-	return false;
+
+	return $db->table_exists("dymy_badges");
 }
 
 function dymy_badges_uninstall()
 {
 	global $db;
-	
-	$db->write_query("DROP TABLE ".TABLE_PREFIX."dymy_badges");
+
+	$db->drop_table('dymy_badges');
+
+	change_admin_permission('forum', 'dymy_badges', -1);
 }
 
 function dymy_badges_activate()
@@ -105,67 +102,85 @@ function dymy_badges_deactivate()
 	find_replace_templatesets("postbit_classic", '#'.preg_quote(' {$post[\'badges\']}').'#', '', 0);
 	find_replace_templatesets("member_profile", '#'.preg_quote(' {$memprofile[\'badges\']}').'#', '', 0);
 	
-	change_admin_permission('forum', 'dymy_badges', -1);
+	change_admin_permission('forum', 'dymy_badges', 0);
 }
 
 function dymy_badges_postbit(&$post)
 {
-	global $db;
-	
-	$query = $db->simple_select("userfields", "*", "ufid = {$post['uid']}");
-	$uf = $db->fetch_array($query);
-	$db->free_result($query);
-	
-	$query = $db->simple_select("dymy_badges", "*");
-	while($badge = $db->fetch_array($query))
+	global $db, $profile_fields;
+
+	if(!is_array($profile_fields))
 	{
-		if(empty($uf['fid'.$badge['badge_field']]))
+		return;
+	}
+
+	static $dymy_badges = null;
+
+	if(!isset($dymy_badges))
+	{
+		$dymy_badges = array();
+
+		$query = $db->simple_select('dymy_badges');
+
+		while($badge = $db->fetch_array($query))
+		{
+			$dymy_badges[$badge['badge_id']] = $badge;
+		}
+	}
+
+	if(empty($dymy_badges))
+	{
+		return;
+	}
+
+	foreach($profile_fields as $field)
+	{
+		$fieldfid = "fid{$field['fid']}";
+		if(empty($dymy_badges[$field['fid']]) || empty($post[$fieldfid]))
 		{
 			continue;
 		}
-		$img = "images/badges/".$badge['badge_img'];
+
+		$badge = $dymy_badges[$field['fid']];
+
+		$img = '<img src="images/badges/'.$badge['badge_img'].'" title="Badge #'.$badge['badge_id'].'" alt="Badge #'.$badge['badge_id'].'" />';
+
 		if(!empty($badge['badge_url']))
 		{
-			$val = $uf['fid'.$badge['badge_field']];
-			$badge['badge_url'] = str_ireplace("{field}", $val, $badge['badge_url']);
-			$post['badges'] .= '<a href="'.$badge['badge_url'].'"><img src="'.$img.'" title="Badge '.$badge['badge_id'].'" alt="Badge #'.$badge['badge_id'].'" /></a>';
+			$badge['badge_url'] = str_ireplace("{field}", $post[$fieldfid], $badge['badge_url']);
+			$post['badges'] .= '<a href="'.$badge['badge_url'].'">'.$img.'</a>';
 		}
 		else
 		{
-			$post['badges'] .= '<img src="'.$img.'" title="Badge '.$badge['badge_id'].'" alt="Badge #'.$badge['badge_id'].'" />';
+			$post['badges'] .= $img;
 		}
 	}
-	$db->free_result($query);
 }
 
 function dymy_badges_profile()
 {
-	global $db, $memprofile;
-	
-	$query = $db->simple_select("userfields", "*", "ufid = {$memprofile['uid']}");
-	$uf = $db->fetch_array($query);
-	$db->free_result($query);
-	
-	$query = $db->simple_select("dymy_badges", "*");
+	global $db, $memprofile, $userfields;
+
+	$query = $db->simple_select('dymy_badges');
 	while($badge = $db->fetch_array($query))
 	{
-		if(empty($uf['fid'.$badge['badge_field']]))
+		if(empty($userfields['fid'.$badge['badge_field']]))
 		{
 			continue;
 		}
-		$img = "images/badges/".$badge['badge_img'];
+
+		$img = '<img src="images/badges/'.$badge['badge_img'].'" title="Badge #'.$badge['badge_id'].'" alt="Badge #'.$badge['badge_id'].'" />';
+
 		if(!empty($badge['badge_url']))
 		{
-			$val = $uf['fid'.$badge['badge_field']];
-			$badge['badge_url'] = str_ireplace("{field}", $val, $badge['badge_url']);
-			$memprofile['badges'] .= '<a href="'.$badge['badge_url'].'"><img src="'.$img.'" title="Badge '.$badge['badge_id'].'" alt="Badge #'.$badge['badge_id'].'" /></a>';
+			$badge['badge_url'] = str_ireplace("{field}", $userfields['fid'.$badge['badge_field']], $badge['badge_url']);
+			$memprofile['badges'] .= '<a href="'.$badge['badge_url'].'">'.$img.'</a>';
 		}
 		else
 		{
-			$memprofile['badges'] .= '<img src="'.$img.'" title="Badge '.$badge['badge_id'].'" alt="Badge #'.$badge['badge_id'].'" />';
+			$memprofile['badges'] .= $img;
 		}
 	}
-	$db->free_result($query);
 }
 
 function dymy_badges_admin_nav(&$sub_menu)
@@ -461,5 +476,3 @@ function dymy_badges_action_handler(&$action)
 {
 	$action['dymy_badges'] = array('active' => 'dymy_badges', 'file' => '');
 }
-
-?>
